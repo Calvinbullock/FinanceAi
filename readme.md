@@ -9,6 +9,8 @@ Built with a focus on smart decision-making and automated execution, the AI Smar
 
 **#AI #Hackathon #OpenSource #AIAgents #LLMs #Coding #Redmond #Seattle**
 
+## Run
+`python cli.py`
 
 ### Quick start
 
