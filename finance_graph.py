@@ -289,6 +289,26 @@ def build_finance_graph():
     return sg.compile()
 
 # --- Run the DAG ---
+import numpy as np
+import datetime
+
+def make_json_serializable(obj):
+    if isinstance(obj, dict):
+        return {k: make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_serializable(v) for v in obj]
+    elif hasattr(obj, "isoformat"):
+        # Handles datetime, pandas.Timestamp, etc.
+        return obj.isoformat()
+    elif isinstance(obj, (np.integer,)):
+        return int(obj)
+    elif isinstance(obj, (np.floating,)):
+        return float(obj)
+    elif isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    else:
+        return obj
+
 def run_finance_graph(product: str, timeframe: str, financials_path: Optional[str] = None):
     graph = build_finance_graph()
     inputs: FinanceState = {
@@ -297,7 +317,7 @@ def run_finance_graph(product: str, timeframe: str, financials_path: Optional[st
         "financials_path": financials_path,
     }
     result = graph.invoke(inputs)
-    return result
+    return make_json_serializable(result)
 
 # Example usage (for testing):
 if __name__ == "__main__":
