@@ -6,7 +6,7 @@ import json
 from dotenv import load_dotenv
 import pandas as pd
 from openai import OpenAI
-from web_search import product_web_search_entry
+from web_search import product_web_search_entry, product_web_search_once
 import datetime
 
 
@@ -134,9 +134,9 @@ def web_search_agent(inputs: FinanceState) -> FinanceState:
     except Exception as e:
         duration_days = 1  # fallback to 1 day if parsing fails
 
-    # Call the web search entry point
+    # Call the web search entry point (single cycle for interactive use)
     try:
-        result = product_web_search_entry(product, price_cap, duration_days)
+        result = product_web_search_once(product, price_cap)
     except Exception as e:
         result = f"Error during product web search: {e}"
 

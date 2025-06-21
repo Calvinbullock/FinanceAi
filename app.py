@@ -179,8 +179,13 @@ def main():
         if st.session_state.get("agent_result"):
             result = st.session_state.agent_result
             with st.container():
-                st.markdown(
-                    f"""
+                # Show full Agent Results box if this is a full agent output (not just a search result)
+                if (
+                    isinstance(result, dict)
+                    and any(k in result for k in ["product", "timeframe", "suggested_budget", "financials_path", "notification_sent"])
+                ):
+                    st.markdown(
+                        f"""
                     <div style="border:2px solid #4CAF50; border-radius:10px; padding:20px; background-color:#f9f9f9;">
                         <h4 style="color:#4CAF50; margin-top:0;">Agent Results</h4>
                         <b>Product:</b> {result.get("product", "—")}<br>
@@ -201,6 +206,24 @@ def main():
                     """,
                     unsafe_allow_html=True
                 )
+                # If it's just a search result dict, show a simple result
+                elif isinstance(result, dict):
+                    product = result.get("product_name")
+                    price = result.get("price")
+                    url = result.get("url")
+                    message = result.get("message")
+                    if product or price or url:
+                        st.subheader("🔎 Search Result")
+                        if product:
+                            st.write(f"**Product:** {product}")
+                        if price is not None:
+                            st.write(f"**Price:** ${price:,.2f}")
+                        if url:
+                            st.write(f"**URL:** [{url}]({url})")
+                    if message:
+                        st.write(f"**Message:** {message}")
+                else:
+                    st.write(result)
 
 if __name__ == "__main__":
     main()

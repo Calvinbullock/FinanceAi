@@ -236,6 +236,14 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
 
 
 
+def product_web_search_once(product_name, price_cap_dollors):
+    """
+    Performs a single-cycle product web search (no sleep, no loop).
+    Returns the result of one call to get_openai_response.
+    """
+    prompt = f"Please search the web for a product listing that matches '{product_name}' at or below ${price_cap_dollors:.2f}."
+    return get_openai_response(prompt, product_name, price_cap_dollors)
+
 #    --- CALL THIS TO USE THIS AGENT ---
 # --- this is the entry point function ---
 def product_web_search_entry(product_name, price_cap_dollors, duration_days):
@@ -278,4 +286,4 @@ def product_web_search_entry(product_name, price_cap_dollors, duration_days):
 
 
 # test call
-product_web_search_entry("laptop", 1300, 2)
+# product_web_search_entry("laptop", 1300, 2)
