@@ -1,3 +1,5 @@
+# --- this is the entry point function ---
+# product_web_search_entry(product_name, price_cap_dollors, duration_days):
 
 from os import environ
 from dotenv import load_dotenv
@@ -16,7 +18,7 @@ MODEL_NAME = "gpt-4.1"
 conversation_history = []
 
 # --- Global flag to signal loop termination ---
-price_match_found = False 
+price_match_found = False
 
 # Global variable to store the current price cap for the specific search run
 # This is a simple way to pass context to the tool handler
@@ -54,13 +56,58 @@ tools = [
 
 
 def handle_price_match(product_name: str, price: float, url: str):
-    return "YAY!!"
+    """
+    Handles the logic when a product is found that matches the desired price criteria.
+
+    This function serves as the "next step" once the AI successfully identifies a product
+    within the specified price range. It prints a success message, sets a global flag
+    to indicate a match, and returns a confirmation string.
+
+    Args:
+        product_name (str): The name of the product found.
+        price (float): The price of the product found.
+        url (str): The URL of the product listing.
+
+    Returns:
+        str: A message confirming that the price match was handled.
+    """
+    global price_match_found
+    print(f"\n*** PRICE MATCH FOUND! ***")
+    print(f"Product: {product_name}")
+    print(f"Price: ${price:.2f}")
+    print(f"URL: {url}")
+    print(f"*** Initiating next step... (e.g., sending alert, recording, purchasing) ***\n")
+
+    price_match_found = True # Set the flag to True to signal termination of the search loop
+
+    return "Price match handled successfully by Python code."
 
 
 def get_openai_response(prompt_text, product_name_for_context, price_cap_for_context):
     """
-    Sends a prompt to the OpenAI API and returns the AI's response,
-    handling both text and tool calls.
+    Sends a prompt to the OpenAI API and processes its response, supporting both
+    natural language replies and AI-initiated tool calls.
+
+    This function manages the conversation history, constructs API requests,
+    and interprets the AI's response. If the AI decides to use a defined tool
+    (like `record_product_found`), it executes the corresponding Python logic
+    and feeds the result back to the AI for further context.
+
+    Args:
+        prompt_text (str): The natural language prompt or query to send to the AI.
+        product_name_for_context (str): The name of the product currently being searched.
+                                        Used to provide context to the AI for accurate tool use.
+        price_cap_for_context (float): The maximum acceptable price for the product.
+                                       Used to provide context to the AI for accurate tool use
+                                       and for internal validation of tool call arguments.
+
+    Returns:
+        str: The AI's final natural language response after processing the prompt
+             and any potential tool calls.
+
+    Raises:
+        openai.APIError: If there's an issue communicating with the OpenAI API.
+        Exception: For any other unexpected errors during the process.
     """
     global current_search_price_cap, current_search_product_name, price_match_found
     current_search_price_cap = price_cap_for_context
@@ -91,8 +138,8 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
         )
 
         ai_message = response.choices[0].message
-        conversation_history.append(ai_message) 
-        
+        conversation_history.append(ai_message)
+
         if ai_message.tool_calls:
             # If the AI responded with tool_calls, process them
             for tool_call in ai_message.tool_calls: # Assuming only one tool call for simplicity in this example
@@ -121,7 +168,7 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
                             "name": function_name,
                             "content": tool_output,
                         })
-                        
+
                         final_response_after_tool = openai.chat.completions.create(
                             model=MODEL_NAME,
                             messages=conversation_history, # Now includes the assistant's tool_calls and the tool's output
@@ -153,7 +200,25 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
         return "An unexpected error occurred. Please try again."
 
 
+
+
+#    --- CALL THIS TO USE THIS AGENT ---
+# --- this is the entry point function ---
 def product_web_search_entry(product_name, price_cap_dollors, duration_days):
+    """
+    Manages the automated web search for a product over a specified duration.
+
+    This function iteratively prompts the AI to search for a product within a given
+    price cap. It continues for a set number of days or until a price match is found.
+    It incorporates delays between search cycles.
+
+    Args:
+        product_name (str): The name of the product to search for.
+        price_cap_dollars (float): The maximum price (in dollars) for the product.
+        duration_days (int): The total number of days to continue the search.
+                             The search will stop either after `duration_days`
+                             or if a price match is found, whichever comes first.
+    """
     global price_match_found
 
     print(f"Starting product search for '{product_name}' at or below ${price_cap_dollors:.2f} for {duration_days} days.")
