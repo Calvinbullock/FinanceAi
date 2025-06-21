@@ -74,9 +74,18 @@ def get_financial_path() -> pathlib.Path:
         raise typer.Exit(code=1)
     return p
 
-# 5. Placeholder entry point
+# 5. Entry point: call the LangGraph DAG
 def entry_point(intent: FinanceAI, xlsx_path: Optional[pathlib.Path]):
-    pass
+    from finance_graph import run_finance_graph
+
+    product = intent.product
+    timeframe = intent.timeframe
+    financials_path = str(xlsx_path) if xlsx_path else None
+
+    typer.echo("\nRunning agents (SuggestBudget → WebSearch)...")
+    result = run_finance_graph(product, timeframe, financials_path)
+    typer.echo("\n--- Agent Results ---")
+    typer.echo(json.dumps(result, indent=2))
 
 # Parse almost any human-friendly timeframe into YYYY-MM-DD
 def parse_timeframe_to_date(tf: str) -> str:
