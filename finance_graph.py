@@ -14,6 +14,7 @@ class FinanceState(TypedDict, total=False):
     financials_path: Optional[str]
     suggested_budget: float
     search_result: Any
+    notification_sent: bool
 
 # --- Utility functions from suggest_budget.py ---
 
@@ -229,14 +230,62 @@ def web_search_agent(inputs: FinanceState) -> FinanceState:
             "search_result": f"Error during OpenAI web search: {e}"
         }
 
+# --- Agent Node 3: NotifyAgent ---
+def notify_agent(inputs: FinanceState) -> FinanceState:
+    # Import send_notification from notify.py
+    from notify import send_notification
+    load_dotenv()
+    product = inputs.get("product")
+    search_result = inputs.get("search_result")
+    user_contact = None  # Could be extended to take from user input
+
+    # Try to extract product, price, and url(s) from search_result
+    if isinstance(search_result, dict):
+        product_name = search_result.get("product_name", product)
+        price = search_result.get("price")
+        url = search_result.get("url")
+        links = [url] if url else []
+        message = search_result.get("message")
+    else:
+        # If search_result is a string or unexpected, fallback
+        product_name = product
+        price = None
+        links = []
+        message = str(search_result)
+
+    # Use the suggested budget as price if price is missing
+    if price is None:
+        price = inputs.get("suggested_budget", 0.0)
+
+    # Use API key from environment
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    # Only send notification if we have a product and price
+    sent = False
+    if product_name and price:
+        sent = send_notification(
+            product=product_name,
+            price=price,
+            links=links,
+            user_contact=user_contact,
+            api_key=api_key,
+            use_email=False  # Set to True if email is configured
+        )
+    return {
+        **inputs,
+        "notification_sent": sent
+    }
+
 # --- Build the LangGraph DAG ---
 def build_finance_graph():
     sg = StateGraph(FinanceState)
     sg.add_node("SuggestBudgetAgent", suggest_budget_agent)
     sg.add_node("WebSearchAgent", web_search_agent)
+    sg.add_node("NotifyAgent", notify_agent)
     sg.set_entry_point("SuggestBudgetAgent")
     sg.add_edge("SuggestBudgetAgent", "WebSearchAgent")
-    sg.add_edge("WebSearchAgent", END)
+    sg.add_edge("WebSearchAgent", "NotifyAgent")
+    sg.add_edge("NotifyAgent", END)
     return sg.compile()
 
 # --- Run the DAG ---
