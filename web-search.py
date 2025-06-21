@@ -15,6 +15,9 @@ MODEL_NAME = "gpt-4.1"
 # the AI to maintain context in a conversation.
 conversation_history = []
 
+# --- Global flag to signal loop termination ---
+price_match_found = False 
+
 # Global variable to store the current price cap for the specific search run
 # This is a simple way to pass context to the tool handler
 current_search_price_cap = 0.0
@@ -59,7 +62,7 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
     Sends a prompt to the OpenAI API and returns the AI's response,
     handling both text and tool calls.
     """
-    global current_search_price_cap, current_search_product_name
+    global current_search_price_cap, current_search_product_name, price_match_found
     current_search_price_cap = price_cap_for_context
     current_search_product_name = product_name_for_context
 
@@ -88,47 +91,42 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
         )
 
         ai_message = response.choices[0].message
-
-        # --- Parse the API's return ---
+        conversation_history.append(ai_message) 
+        
         if ai_message.tool_calls:
-            # The AI wants to call a tool!
-            for tool_call in ai_message.tool_calls:
+            # If the AI responded with tool_calls, process them
+            for tool_call in ai_message.tool_calls: # Assuming only one tool call for simplicity in this example
                 function_name = tool_call.function.name
-                function_args_str = tool_call.function.arguments # This is a JSON string
+                function_args_str = tool_call.function.arguments
 
-                print(f"\nAI requested tool call: {function_name} with arguments: {function_args_str}")
+                print(f"AI requested tool call: {function_name} with arguments: {function_args_str}")
 
                 if function_name == "record_product_found":
                     try:
-                        args = json.loads(function_args_str) # Parse the JSON string into a Python dict
+                        args = json.loads(function_args_str)
                         product_name = args.get("product_name")
                         price = args.get("price")
                         url = args.get("url")
 
-                        # double check the price match
                         if price is not None and price <= current_search_price_cap:
-                            # Execute your actual "next step" logic
                             tool_output = handle_price_match(product_name, price, url)
-                            break
+                            price_match_found = True
                         else:
-                            tool_output = f"\nProduct '{product_name}' found at ${price}, but it's above the cap of ${current_search_price_cap}. Continuing search."
+                            tool_output = f"Product '{product_name}' found at ${price}, but it's above the cap of ${current_search_price_cap:.2f}. Continuing search."
                             print(tool_output)
 
-                        # Add the tool's output back to conversation history so the AI knows the result
                         conversation_history.append({
                             "tool_call_id": tool_call.id,
                             "role": "tool",
                             "name": function_name,
                             "content": tool_output,
                         })
-
-                        # Make another API call to let the AI summarize/respond after the tool execution
-                        # This is important for multi-turn conversations
-                        final_response = openai.chat.completions.create(
+                        
+                        final_response_after_tool = openai.chat.completions.create(
                             model=MODEL_NAME,
-                            messages=conversation_history, # Send updated history with tool output
+                            messages=conversation_history, # Now includes the assistant's tool_calls and the tool's output
                         )
-                        final_ai_message_content = final_response.choices[0].message.content
+                        final_ai_message_content = final_response_after_tool.choices[0].message.content
                         conversation_history.append({"role": "assistant", "content": final_ai_message_content})
                         return final_ai_message_content
 
@@ -138,6 +136,7 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
                     except Exception as ex:
                         print(f"Error executing tool {function_name}: {ex}")
                         return f"An error occurred while processing the AI's tool request: {ex}"
+
                 else:
                     return f"AI requested an unknown tool: {function_name}"
         else:
@@ -155,10 +154,12 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
 
 
 def product_web_search_entry(product_name, price_cap_dollors, duration_days):
+    global price_match_found
+
     print(f"Starting product search for '{product_name}' at or below ${price_cap_dollors:.2f} for {duration_days} days.")
     days_passed = 0
 
-    while days_passed < duration_days:
+    while not price_match_found:
         delay_seconds = 24 * 60 * 60 # 24 hours
 
         prompt = f"Please search the web for a product listing that matches '{product_name}' at or below ${price_cap_dollors:.2f}."
@@ -170,7 +171,7 @@ def product_web_search_entry(product_name, price_cap_dollors, duration_days):
 
         days_passed += 1
 
-        if days_passed < duration_days:
+        if days_passed < duration_days and not price_match_found:
             print(f"Waiting for 24 hours before next search cycle. ({duration_days - days_passed} days remaining)")
             time.sleep(delay_seconds)
         else:
@@ -179,18 +180,4 @@ def product_web_search_entry(product_name, price_cap_dollors, duration_days):
 
 # test call
 product_web_search_entry("airpods 2nd gen", 500, 28)
-
-
-# for API-key testing
-def chat():
-    while True:
-        user_input = input("You: ")
-
-        ai_response = get_openai_response(user_input)
-        print(f"AI: {ai_response}")
-
-        # exit
-        if user_input.lower() in ['quit', 'exit']:
-            print("Goodbye!")
-            break
 
