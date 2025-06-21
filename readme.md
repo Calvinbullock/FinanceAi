@@ -18,6 +18,8 @@ python cli.py
 
 ```
 
-Run `python cli.py` to start the program
+Run `python cli.py` to start the program as a CLI
+### or
+Run `streamlit run app.py` to run it as a web GUI
 
 Environment variable `OPENAI_API_KEY` must be set (use a `.env` file).
