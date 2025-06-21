@@ -1,9 +1,7 @@
 {
   "product": "Sony WH-1000XM5",
   "price": 279.99,
-  "links": [
-    "https://example.com/deal"
-  ],
+  "links": ["https://example.com/deal"],
   "user_contact": "vtevy@uw.edu",
-  "api_key": "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"
+  "api_key": "OPENAI_API_KEY"
 }

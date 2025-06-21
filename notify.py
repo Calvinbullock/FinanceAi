@@ -163,20 +163,25 @@ def _parse_args(argv: List[str] | None = None) -> argparse.Namespace:  # pragma:
 def main() -> None:  # pragma: no cover
     args = _parse_args()
 
-    # Read JSON payload — either from file or stdin.
+    # ── 1. Load the JSON payload ──────────────────────────────────────────────
     try:
-        if args.input:
+        if args.input:                       # from file
             with open(args.input, "r", encoding="utf-8") as fp:
                 payload: Dict[str, Any] = json.load(fp)
-        else:
+        else:                                # from stdin
             payload = json.load(sys.stdin)
     except Exception as exc:
         sys.exit(f"Could not read JSON payload: {exc!s}")
 
-    # Command-line overrides
+    # ── 2. Replace placeholder key (optional) ────────────────────────────────
+    if payload.get("api_key") == "OPENAI_API_KEY":
+        payload["api_key"] = os.getenv("OPENAI_API_KEY")
+
+    # Command-line override for contact
     if args.contact:
         payload["user_contact"] = args.contact
 
+    # ── 3. Send the notification ─────────────────────────────────────────────
     success = send_notification(
         product=payload.get("product"),
         price=float(payload.get("price")),
