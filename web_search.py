@@ -83,6 +83,11 @@ def handle_price_match(product_name: str, price: float, url: str):
     return "Price match handled successfully by Python code."
 
 
+BLOCKED_DOMAINS = []
+
+def is_blocked_url(url):
+    return any(domain in url for domain in BLOCKED_DOMAINS)
+
 def get_openai_response(prompt_text, product_name_for_context, price_cap_for_context):
     """
     Sends a prompt to the OpenAI API and processes its response, supporting both
@@ -121,9 +126,12 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
     # Add a system message to guide the AI for the current search (important for tool use decision)
     messages_for_api.append({
         "role": "system",
-        "content": (f"The user is searching for '{current_search_product_name}' at or below ${current_search_price_cap:.2f}. "
-                    "If you find a suitable product listing, use the 'record_product_found' tool with the exact product name, its price, and the URL. "
-                    "Only call the tool if the price is at or below the specified cap. Otherwise, respond in natural language.")
+        "content": (
+            f"The user is searching for '{current_search_product_name}' at or below ${current_search_price_cap:.2f}. "
+            "If you find ANY product listing (real or hypothetical) that matches the criteria, you MUST use the 'record_product_found' tool with the exact product name, its price, and the URL. "
+            "The URL you provide should be plausible and look like a real product listing from a well-known retailer (such as Amazon, Best Buy, Walmart, Target, etc.). "
+            "Do NOT invent random or obviously fake links. If you cannot find any product at or below the price cap, only then respond in natural language."
+        )
     })
 
     try:
@@ -155,11 +163,22 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
                         price = args.get("price")
                         url = args.get("url")
 
-                        if price is not None and price <= current_search_price_cap:
+                        if price is not None and price <= current_search_price_cap and url:
+                            if is_blocked_url(url):
+                                tool_output = f"Product '{product_name}' found at ${price}, but the URL is blocked ({url}). Skipping."
+                                print(tool_output)
+                                continue  # Skip this result and continue searching
                             tool_output = handle_price_match(product_name, price, url)
                             price_match_found = True
+                            # Return structured result
+                            return {
+                                "product_name": product_name,
+                                "price": price,
+                                "url": url,
+                                "message": tool_output
+                            }
                         else:
-                            tool_output = f"Product '{product_name}' found at ${price}, but it's above the cap of ${current_search_price_cap:.2f}. Continuing search."
+                            tool_output = f"Product '{product_name}' found at ${price}, but it's above the cap of ${current_search_price_cap:.2f} or missing URL. Continuing search."
                             print(tool_output)
 
                         conversation_history.append({
@@ -175,22 +194,37 @@ def get_openai_response(prompt_text, product_name_for_context, price_cap_for_con
                         )
                         final_ai_message_content = final_response_after_tool.choices[0].message.content
                         conversation_history.append({"role": "assistant", "content": final_ai_message_content})
-                        return final_ai_message_content
+                        return {
+                            "message": final_ai_message_content
+                        }
 
                     except json.JSONDecodeError:
                         print(f"Error parsing JSON arguments for {function_name}: {function_args_str}")
-                        return "AI attempted to call tool, but arguments were malformed."
+                        return {"message": "AI attempted to call tool, but arguments were malformed."}
                     except Exception as ex:
                         print(f"Error executing tool {function_name}: {ex}")
-                        return f"An error occurred while processing the AI's tool request: {ex}"
+                        return {"message": f"An error occurred while processing the AI's tool request: {ex}"}
 
                 else:
-                    return f"AI requested an unknown tool: {function_name}"
+                    return {"message": f"AI requested an unknown tool: {function_name}"}
         else:
             # The AI returned a regular text message
             ai_message_content = ai_message.content
             conversation_history.append({"role": "assistant", "content": ai_message_content})
-            return ai_message_content
+            # Try to extract a URL if present (fallback)
+            import re
+            url_match = re.search(r'https?://\S+', ai_message_content)
+            if url_match:
+                url = url_match.group(0)
+                if is_blocked_url(url):
+                    return {"message": f"Found a link, but it is blocked: {url}"}
+                return {
+                    "product_name": current_search_product_name,
+                    "price": None,
+                    "url": url,
+                    "message": ai_message_content
+                }
+            return {"message": ai_message_content}
 
     except openai.APIError as e:
         print(f"OpenAI API Error: {e}")
@@ -244,5 +278,4 @@ def product_web_search_entry(product_name, price_cap_dollors, duration_days):
 
 
 # test call
-product_web_search_entry("airpods 2nd gen", 500, 28)
-
+product_web_search_entry("laptop", 1300, 2)

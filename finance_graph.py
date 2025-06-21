@@ -6,6 +6,9 @@ import json
 from dotenv import load_dotenv
 import pandas as pd
 from openai import OpenAI
+from web_search import product_web_search_entry
+import datetime
+
 
 # --- State schema for LangGraph ---
 class FinanceState(TypedDict, total=False):
@@ -115,120 +118,32 @@ def suggest_budget_agent(inputs: FinanceState) -> FinanceState:
 
 # --- Agent Node 2: WebSearchAgent ---
 def web_search_agent(inputs: FinanceState) -> FinanceState:
-    load_dotenv()
+    # Import the entry point from web-search.py
     product = inputs["product"]
     price_cap = inputs["suggested_budget"]
-    timeframe = inputs["timeframe"]
+    timeframe = inputs.get("timeframe")
 
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is not set")
-
-    client = OpenAI()
-
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "record_product_found",
-                "description": "Records details of a product found during a web search that meets the specified criteria.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "product_name": {
-                            "type": "string",
-                            "description": "The exact name of the product found, e.g., 'Sony WH-1000XM5 headphones'."
-                        },
-                        "price": {
-                            "type": "number",
-                            "description": "The numeric price of the product found, e.g., 299.99."
-                        },
-                        "url": {
-                            "type": "string",
-                            "description": "The URL of the product listing."
-                        }
-                    },
-                    "required": ["product_name", "price", "url"]
-                }
-            }
-        }
-    ]
-
-    prompt = f"Please search the web for a product listing that matches '{product}' at or below ${price_cap:.2f}."
-
-    system_message = {
-        "role": "system",
-        "content": (
-            f"The user is searching for '{product}' at or below ${price_cap:.2f}. "
-            "If you find a suitable product listing, use the 'record_product_found' tool with the exact product name, its price, and the URL. "
-            "Only call the tool if the price is at or below the specified cap. Otherwise, respond in natural language."
-        )
-    }
-
-    messages = [
-        {"role": "user", "content": prompt},
-        system_message
-    ]
-
+    # Compute duration_days from timeframe (assume format "YYYY-MM-DD")
     try:
-        response = client.chat.completions.create(
-            model="gpt-4.1",
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            max_tokens=250,
-            temperature=0.7,
-            stream=False
-        )
-
-        ai_message = response.choices[0].message
-
-        if hasattr(ai_message, "tool_calls") and ai_message.tool_calls:
-            for tool_call in ai_message.tool_calls:
-                function_name = tool_call.function.name
-                function_args_str = tool_call.function.arguments
-
-                if function_name == "record_product_found":
-                    try:
-                        args = json.loads(function_args_str)
-                        product_name = args.get("product_name")
-                        price = args.get("price")
-                        url = args.get("url")
-                        if price is not None and price <= price_cap:
-                            return {
-                                **inputs,
-                                "search_result": {
-                                    "product_name": product_name,
-                                    "price": price,
-                                    "url": url,
-                                    "message": f"Found {product_name} for ${price} at {url}"
-                                }
-                            }
-                        else:
-                            return {
-                                **inputs,
-                                "search_result": f"Product '{product_name}' found at ${price}, but it's above the cap of ${price_cap:.2f}."
-                            }
-                    except Exception as ex:
-                        return {
-                            **inputs,
-                            "search_result": f"Error parsing tool call arguments: {ex}"
-                        }
-                else:
-                    return {
-                        **inputs,
-                        "search_result": f"AI requested an unknown tool: {function_name}"
-                    }
+        if timeframe:
+            target_date = datetime.datetime.strptime(timeframe, "%Y-%m-%d")
+            today = datetime.datetime.now()
+            duration_days = max(1, (target_date - today).days)
         else:
-            return {
-                **inputs,
-                "search_result": ai_message.content
-            }
-
+            duration_days = 1
     except Exception as e:
-        return {
-            **inputs,
-            "search_result": f"Error during OpenAI web search: {e}"
-        }
+        duration_days = 1  # fallback to 1 day if parsing fails
+
+    # Call the web search entry point
+    try:
+        result = product_web_search_entry(product, price_cap, duration_days)
+    except Exception as e:
+        result = f"Error during product web search: {e}"
+
+    return {
+        **inputs,
+        "search_result": result
+    }
 
 # --- Agent Node 3: NotifyAgent ---
 def notify_agent(inputs: FinanceState) -> FinanceState:
